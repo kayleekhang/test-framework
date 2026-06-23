@@ -1,0 +1,60 @@
+system_name: vehicle-demo
+system_type: vehicle
+target: vm
+environment: developer
+
+products:
+  gps:
+    product_type: gps
+    target: vm
+    applications:
+      - name: gps-sim
+        binary_name: gps_sim
+        builder: cargo
+        deployer: local
+        launcher: process
+        args: ["--rate", "10"]
+    settings:
+      update_rate_hz: 10
+      protocol: nmea
+
+  radio:
+    product_type: radio
+    target: amd64
+    applications:
+      - name: radio-service
+        binary_name: radio_service
+        builder: cmake
+        deployer: scp
+        launcher: process
+        args: ["--frequency", "915"]
+      - name: radio-health
+        binary_name: radio_health
+        builder: cmake
+        deployer: scp
+        launcher: process
+    settings:
+      frequency_mhz: 915
+      power_dbm: 20
+      host: 192.168.1.20
+      ssh_user: test
+
+  controller:
+    product_type: controller
+    target: arm64
+    applications:
+      - name: controller-main
+        binary_name: controller_main
+        builder: cmake
+        deployer: ansible
+        launcher: systemd
+        args: ["--profile", "integration"]
+      - name: controller-watchdog
+        binary_name: controller_watchdog
+        builder: cmake
+        deployer: ansible
+        launcher: systemd
+    settings:
+      host: 192.168.1.30
+      ssh_user: test
+      service_name: controller.service

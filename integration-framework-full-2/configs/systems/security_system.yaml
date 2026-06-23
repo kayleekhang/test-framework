@@ -1,0 +1,28 @@
+system_name: security-demo
+system_type: security
+target: vm
+environment: developer
+
+products:
+  camera:
+    product_type: camera
+    target: vm
+    applications:
+      - name: camera-sim
+        binary_name: camera_sim
+        builder: docker
+        deployer: docker
+        launcher: docker
+    settings:
+      fps: 30
+
+  display:
+    product_type: display
+    target: vm
+    applications:
+      - name: operator-display
+        binary_name: operator_display
+        builder: cargo
+        deployer: local
+        launcher: process
+    settings: {}

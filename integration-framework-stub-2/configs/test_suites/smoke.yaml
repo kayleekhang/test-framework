@@ -1,0 +1,3 @@
+suite_name: smoke
+tests:
+  - tests/smoke/test_vehicle_boot.py

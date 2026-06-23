@@ -1,0 +1,47 @@
+system_name: vehicle-demo
+system_type: vehicle
+target: vm
+
+products:
+  gps:
+    product_type: gps
+    mode: simulator
+    target: vm
+    applications:
+      - name: gps-sim
+        binary_name: gps_sim
+        args: ["--rate", "10"]
+    settings:
+      update_rate_hz: 10
+      protocol: nmea
+
+  radio:
+    product_type: radio
+    mode: local_binary
+    target: amd64
+    applications:
+      - name: radio-service
+        binary_name: radio_service
+        args: ["--frequency", "915"]
+      - name: radio-health
+        binary_name: radio_health
+        args: []
+    settings:
+      frequency_mhz: 915
+      power_dbm: 20
+
+  controller:
+    product_type: controller
+    mode: systemd
+    target: arm64
+    applications:
+      - name: controller-main
+        binary_name: controller_main
+        args: ["--profile", "integration"]
+      - name: controller-watchdog
+        binary_name: controller_watchdog
+        args: []
+    settings:
+      host: 192.168.1.30
+      ssh_user: test
+      service_name: controller.service

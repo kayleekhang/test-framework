@@ -1,0 +1,2 @@
+environment: production
+artifact_root: artifacts

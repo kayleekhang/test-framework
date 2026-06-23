@@ -1,0 +1,3 @@
+target: jetson
+arch: aarch64
+toolchain: jetson-toolchain

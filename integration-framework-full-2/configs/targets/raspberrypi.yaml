@@ -1,0 +1,3 @@
+target: raspberrypi
+arch: aarch64
+toolchain: raspi-toolchain

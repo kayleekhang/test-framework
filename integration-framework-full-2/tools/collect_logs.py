@@ -1,0 +1,1 @@
+print('Collect logs stub')

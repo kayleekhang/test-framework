@@ -1,0 +1,1 @@
+print('Reset lab stub')
