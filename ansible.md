@@ -1,3 +1,4 @@
+```
 integration-framework/
 ├── deployment/
 │   ├── inventory/
@@ -29,3 +30,4 @@ integration-framework/
 │   │
 │   └── group_vars/
 │       └── vehicle_system.yml
+```
