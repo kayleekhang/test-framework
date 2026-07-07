@@ -1,0 +1,53 @@
+environment:
+  name: product1-product2-smoke
+  network: integration-net
+  zone: cloudstack-zone-1
+  domain: test.local
+
+harness:
+  template: test-harness-template-v4
+  service_offering: medium
+  ip: 10.50.10.10
+  tools:
+    - pytest
+    - ansible
+    - tshark
+    - gstreamer
+    - selenium
+
+products:
+  product1:
+    enabled: true
+    template: product1-template-2026-07-01
+    service_offering: large
+    ip: 10.50.10.11
+    ui_url: https://10.50.10.11
+    capabilities:
+      - send_udp
+      - receive_audio
+      - send_audio
+      - web_ui
+    config:
+      media_port: 5000
+      api_port: 8443
+      mode: sender
+
+  product2:
+    enabled: true
+    template: product2-template-2026-07-01
+    service_offering: medium
+    ip: 10.50.10.12
+    capabilities:
+      - receive_udp
+      - receive_audio
+    config:
+      media_port: 5000
+      api_port: 8443
+      mode: receiver
+
+  product3:
+    enabled: false
+    template: product3-template-2026-07-01
+    service_offering: medium
+    capabilities:
+      - send_video

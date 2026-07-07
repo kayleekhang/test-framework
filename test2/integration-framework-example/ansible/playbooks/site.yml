@@ -1,0 +1,8 @@
+---
+- name: Configure integration test products
+  hosts: products
+  gather_facts: false
+  tasks:
+    - name: Placeholder for product deployment
+      ansible.builtin.debug:
+        msg: "Deploy {{ inventory_hostname }} for {{ env_id | default('local') }}"

@@ -1,0 +1,41 @@
+{
+  "environment_id": "it-a18f31c2",
+  "network": {
+    "name": "integration-net",
+    "cidr": "10.50.10.0/24",
+    "domain": "test.local"
+  },
+  "harness": {
+    "name": "harness-it-a18f31c2",
+    "ip": "10.50.10.10",
+    "template": "test-harness-template-v4"
+  },
+  "products": {
+    "product1": {
+      "enabled": true,
+      "name": "product1-it-a18f31c2",
+      "ip": "10.50.10.11",
+      "template": "product1-template-2026-07-01",
+      "ui_url": "https://10.50.10.11",
+      "capabilities": ["send_udp", "receive_audio", "send_audio", "web_ui"],
+      "settings": {
+        "media_port": 5000,
+        "api_port": 8443,
+        "mode": "sender"
+      }
+    },
+    "product2": {
+      "enabled": true,
+      "name": "product2-it-a18f31c2",
+      "ip": "10.50.10.12",
+      "template": "product2-template-2026-07-01",
+      "ui_url": null,
+      "capabilities": ["receive_udp", "receive_audio"],
+      "settings": {
+        "media_port": 5000,
+        "api_port": 8443,
+        "mode": "receiver"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+[project]
+name = "integration-framework-example"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+  "pytest>=8.0",
+  "requests>=2.31",
+  "selenium>=4.20",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: tests that exercise multiple products",
+  "ui: tests that drive one of the product UIs",
+  "network: tests that collect packet-level evidence",
+  "media: tests that send or receive media",
+  "performance: tests that exercise load, timing, throughput, or repeated behavior",
+  "product(name): test applies to a specific product",
+  "suite(name): test belongs to a product-owned suite",
+  "capability(name): test covers a product capability",
+  "requirement(id): test covers a specific requirement",
+]
