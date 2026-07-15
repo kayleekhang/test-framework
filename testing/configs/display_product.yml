@@ -1,0 +1,44 @@
+product_type: display
+
+api:
+  endpoints:
+    health:
+      protocol: http
+      host: localhost
+      port: 8080
+      path: /health
+
+    alerts:
+      protocol: http
+      host: localhost
+      port: 8080
+      path: /api/alerts
+
+ui:
+  base_url: http://localhost:3000
+  selector_prefix: display
+
+  pages:
+    dashboard:
+      route: /
+      page_type: dashboard
+      elements:
+        acknowledge_alert:
+          type: button
+          test_tag: acknowledge-alert
+
+        alert_popup:
+          type: popup
+          test_tag: alert-popup
+
+    settings:
+      route: /settings
+      page_type: settings
+      elements:
+        save:
+          type: button
+          test_tag: save-settings
+
+        success_message:
+          type: text
+          test_tag: settings-saved-message
