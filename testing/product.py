@@ -1,10 +1,13 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 from dataclasses import dataclass
-import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+
+try:
+    import httpx
+except ImportError:
+    httpx = None
 
 try:
     from selenium.webdriver.common.by import By
@@ -23,6 +26,11 @@ except ImportError:
 def _require_selenium():
     if EC is None or WebDriverWait is None:
         raise RuntimeError("Selenium is required to interact with UI elements.")
+
+
+def _require_httpx():
+    if httpx is None:
+        raise RuntimeError("httpx is required to call API endpoints.")
 
 
 @dataclass(frozen=True)
@@ -56,32 +64,32 @@ class APIResponse:
 
 
 class API:
-    def __init__(self, endpoints: dict[str, Endpoint]):
+    def __init__(self, endpoints: dict[str, Endpoint], base_headers: dict[str, str] | None = None):
         self.endpoints = endpoints
+        self.base_headers = base_headers or {}
 
     def endpoint(self, name: str) -> Endpoint:
         return self.endpoints[name]
 
     def request(self, name: str, timeout_seconds: int = 10) -> APIResponse:
+        _require_httpx()
         endpoint = self.endpoint(name)
-        headers = endpoint.headers or {}
-        body = self._encode_body(endpoint.body, headers)
-
-        request = Request(
-            endpoint.url,
-            data=body,
-            headers=headers,
-            method=endpoint.method.upper(),
-        )
+        headers = self._headers_for(endpoint)
 
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:
-                response_body = response.read().decode("utf-8", errors="replace")
+            with httpx.Client(timeout=timeout_seconds) as client:
+                response = client.request(
+                    method=endpoint.method,
+                    url=endpoint.url,
+                    headers=headers,
+                    content=endpoint.body if isinstance(endpoint.body, (bytes, str)) else None,
+                    json=endpoint.body if isinstance(endpoint.body, dict) else None,
+                )
                 return APIResponse(
                     endpoint_name=name,
                     url=endpoint.url,
-                    status_code=response.status,
-                    body=response_body,
+                    status_code=response.status_code,
+                    body=response.text,
                 )
         except Exception as exc:
             return APIResponse(
@@ -94,40 +102,66 @@ class API:
     def request_many(
         self,
         names: list[str] | None = None,
-        max_workers: int = 5,
         timeout_seconds: int = 10,
     ) -> dict[str, APIResponse]:
+        return asyncio.run(self.request_many_async(names, timeout_seconds=timeout_seconds))
+
+    async def request_async(
+        self,
+        name: str,
+        client: Any | None = None,
+        timeout_seconds: int = 10,
+    ) -> APIResponse:
+        _require_httpx()
+        endpoint = self.endpoint(name)
+        headers = self._headers_for(endpoint)
+
+        try:
+            if client is None:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as async_client:
+                    return await self.request_async(name, async_client, timeout_seconds)
+
+            response = await client.request(
+                method=endpoint.method,
+                url=endpoint.url,
+                headers=headers,
+                content=endpoint.body if isinstance(endpoint.body, (bytes, str)) else None,
+                json=endpoint.body if isinstance(endpoint.body, dict) else None,
+            )
+            return APIResponse(
+                endpoint_name=name,
+                url=endpoint.url,
+                status_code=response.status_code,
+                body=response.text,
+            )
+        except Exception as exc:
+            return APIResponse(
+                endpoint_name=name,
+                url=endpoint.url,
+                status_code=None,
+                error=str(exc),
+            )
+
+    async def request_many_async(
+        self,
+        names: list[str] | None = None,
+        timeout_seconds: int = 10,
+    ) -> dict[str, APIResponse]:
+        _require_httpx()
         endpoint_names = names or list(self.endpoints)
-        results: dict[str, APIResponse] = {}
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_name = {
-                executor.submit(self.request, name, timeout_seconds): name
-                for name in endpoint_names
-            }
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+            responses = await asyncio.gather(
+                *(self.request_async(name, client, timeout_seconds) for name in endpoint_names)
+            )
 
-            for future in as_completed(future_to_name):
-                name = future_to_name[future]
-                results[name] = future.result()
+        return {response.endpoint_name: response for response in responses}
 
-        return results
-
-    @staticmethod
-    def _encode_body(
-        body: dict[str, Any] | str | bytes | None,
-        headers: dict[str, str],
-    ) -> bytes | None:
-        if body is None:
-            return None
-
-        if isinstance(body, bytes):
-            return body
-
-        if isinstance(body, str):
-            return body.encode("utf-8")
-
-        headers.setdefault("Content-Type", "application/json")
-        return json.dumps(body).encode("utf-8")
+    def _headers_for(self, endpoint: Endpoint) -> dict[str, str]:
+        headers = {**self.base_headers, **(endpoint.headers or {})}
+        if isinstance(endpoint.body, dict):
+            headers.setdefault("Content-Type", "application/json")
+        return headers
 
 
 class UiElement:
@@ -315,35 +349,61 @@ class Product:
         self.pages = pages
         self.config = config
 
+    @property
+    def has_ui(self) -> bool:
+        return bool(self.pages)
+
     def page(self, name: str) -> Page:
+        if name not in self.pages:
+            available = ", ".join(sorted(self.pages)) or "none"
+            raise KeyError(f"Unknown page '{name}'. Available pages: {available}")
         return self.pages[name]
 
 
+class BackendOnlyProduct(Product):
+    pass
+
+
+class DisplayProduct(Product):
+    def health(self) -> APIResponse:
+        return self.api.request("health")
+
+
 class ProductFactory:
+    PRODUCT_TYPES = {
+        "backend": BackendOnlyProduct,
+        "display": DisplayProduct,
+    }
+
     @staticmethod
     def create(driver: WebDriver, config: dict[str, Any]) -> Product:
         api = API(
             endpoints={
                 name: Endpoint(**endpoint_config)
                 for name, endpoint_config in config.get("api", {}).get("endpoints", {}).items()
-            }
+            },
+            base_headers=config.get("api", {}).get("headers"),
         )
 
-        ui_config = config["ui"]
-        product_prefix = ui_config["selector_prefix"]
-        base_url = ui_config["base_url"]
-        pages = {
-            page_name: PageFactory.create(
-                driver=driver,
-                base_url=base_url,
-                product_prefix=product_prefix,
-                name=page_name,
-                config=page_config,
-            )
-            for page_name, page_config in ui_config.get("pages", {}).items()
-        }
+        pages: dict[str, Page] = {}
+        ui_config = config.get("ui")
 
-        return Product(api=api, pages=pages, config=config)
+        if ui_config:
+            product_prefix = ui_config["selector_prefix"]
+            base_url = ui_config["base_url"]
+            pages = {
+                page_name: PageFactory.create(
+                    driver=driver,
+                    base_url=base_url,
+                    product_prefix=product_prefix,
+                    name=page_name,
+                    config=page_config,
+                )
+                for page_name, page_config in ui_config.get("pages", {}).items()
+            }
+
+        product_cls = ProductFactory.PRODUCT_TYPES.get(config.get("product_type"), Product)
+        return product_cls(api=api, pages=pages, config=config)
 
 
 def load_product_config(config_path: str | Path) -> dict[str, Any]:

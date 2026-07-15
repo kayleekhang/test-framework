@@ -1,0 +1,17 @@
+product_type: backend
+
+api:
+  endpoints:
+    health:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8081
+      path: /health
+
+    status:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8081
+      path: /api/status

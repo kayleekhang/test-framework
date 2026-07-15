@@ -14,18 +14,20 @@ dashboard.click("acknowledge_alert")
 
 `load_product_config()` uses PyYAML when it is installed. If PyYAML is not installed, it falls back to a small mapping-only YAML reader that supports the config style shown in this README.
 
+Install the testing dependencies from [requirements.txt](/Users/kayleekhang/kyle-june-26/test-framework/testing/requirements.txt:1).
+
 ## Core Model
 
 ```text
 Product
   api
     endpoints
-  pages
+  pages optional
     page
       elements
 ```
 
-- `Product` owns one API object and many pages.
+- `Product` owns one API object and zero or more pages.
 - `API` owns named endpoints.
 - `Page` owns named UI elements for one route.
 - `UiElement` wraps a Selenium selector and exposes actions like `click()`, `text()`, and `is_visible()`.
@@ -46,6 +48,7 @@ Each product should get its own YAML file:
 ```text
 configs/
   display_product.yml
+  backend_product.yml
   camera_product.yml
   admin_console_product.yml
 ```
@@ -62,6 +65,21 @@ ui:
   base_url: http://localhost:3000
   selector_prefix: display
   pages: {}
+```
+
+`ui` is optional. Backend-only products can omit it:
+
+```yaml
+product_type: backend
+
+api:
+  endpoints:
+    health:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8081
+      path: /health
 ```
 
 ## API Config
@@ -106,13 +124,22 @@ assert response.status_code == 200
 Run multiple endpoints concurrently:
 
 ```python
-responses = product.api.request_many(["health", "alerts"], max_workers=2)
+responses = product.api.request_many(["health", "alerts"])
 
 assert responses["health"].ok
 assert responses["alerts"].ok
 ```
 
-The current API client uses Python's standard-library `ThreadPoolExecutor`. That is a good first choice for simple I/O-bound endpoint checks. If API testing becomes a large async workflow, `httpx.AsyncClient` would be the better next step.
+The API client uses `httpx`. `request()` uses `httpx.Client`; `request_many()` uses `httpx.AsyncClient` internally for concurrent calls.
+
+If you are already inside an async test, call the async API directly:
+
+```python
+responses = await product.api.request_many_async(["health", "alerts"])
+
+assert responses["health"].ok
+assert responses["alerts"].ok
+```
 
 ## UI Config
 
@@ -159,7 +186,7 @@ So the UI should have:
 
 ## Element Config
 
-Each element needs a stable name and either `test_tag` or `selector`.
+Each element needs a stable name and a `test_tag`.
 
 Preferred:
 
@@ -169,7 +196,9 @@ save:
   test_tag: save-settings
 ```
 
-Direct selector:
+If your project always uses `data-testid`, you do not need multiple selector strategies. Keep `test_tag` as the standard and avoid `selector` unless you are forced to test existing UI that cannot expose test IDs.
+
+Direct selector fallback:
 
 ```yaml
 save:
@@ -195,6 +224,22 @@ Element types currently supported:
 - `text`
 
 Unknown types fall back to the base `UiElement`.
+
+You still need multiple named elements even if every element uses `test_tag`.
+
+This is because element names express test intent:
+
+```yaml
+save:
+  type: button
+  test_tag: save-settings
+
+cancel:
+  type: button
+  test_tag: cancel-settings
+```
+
+Both use the same selector strategy, but they represent different UI actions.
 
 ## Adding a UI Element
 

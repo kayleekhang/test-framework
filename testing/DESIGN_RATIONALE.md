@@ -16,8 +16,8 @@ The design is based on these references:
 - [SeleniumBase examples](https://github.com/seleniumbase/SeleniumBase/tree/master/examples) show real pytest/Selenium tests built around higher-level browser actions.
 - [MDN: CSS Attribute Selectors](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/Attribute_selectors) documents the CSS selector form used for `data-testid`.
 - [Python dataclasses](https://docs.python.org/3/library/dataclasses.html) supports the small typed value objects used for endpoints and API responses.
-- [Python concurrent.futures](https://docs.python.org/3/library/concurrent.futures.html) supports the `ThreadPoolExecutor` approach used for concurrent endpoint calls.
-- [HTTPX Async Support](https://www.python-httpx.org/async/) is the likely next step if the API layer grows into a larger async HTTP client.
+- [HTTPX Clients](https://www.python-httpx.org/advanced/clients/) documents reusable sync clients, connection pooling, and client-level configuration.
+- [HTTPX Async Support](https://www.python-httpx.org/async/) documents the async client used for concurrent endpoint calls.
 
 ## Why Page Objects
 
@@ -210,7 +210,7 @@ products:
 Keep these in test config:
 
 - `test_tag`
-- direct Selenium selectors
+- direct Selenium selectors only when `test_tag` cannot be used
 - element type, such as `button`, `popup`, `text`
 - timeout overrides
 - page test names
@@ -219,6 +219,41 @@ Keep these in test config:
 Reason: those are testing concerns, not operational concerns.
 
 The product does not need to operate with `data-testid="display-save-settings"`. The test does.
+
+## Do You Need Multiple UI Elements if Everything Uses Test Tags?
+
+Yes, you still need multiple named UI elements.
+
+No, you do not need multiple selector strategies.
+
+These are different concerns:
+
+```text
+selector strategy: how Selenium finds an element
+element name: what the test calls that element
+element type: how the framework interacts with that element
+```
+
+If every UI element has a stable `data-testid`, make `test_tag` the standard:
+
+```yaml
+save:
+  type: button
+  test_tag: save-settings
+
+cancel:
+  type: button
+  test_tag: cancel-settings
+```
+
+Both elements use the same selector strategy, but tests still need separate names:
+
+```python
+settings.click("save")
+settings.click("cancel")
+```
+
+Keep the direct `selector` option as an escape hatch for legacy UI, third-party components, or pages that cannot expose test IDs.
 
 ## Recommended Merge Design
 
@@ -249,30 +284,96 @@ This lets reviewers see what is operational data and what is test-only data.
 
 ## Concurrent API Calls
 
-The current `API` class supports concurrent endpoint calls with `ThreadPoolExecutor`.
+The current `API` class uses `httpx`.
+
+Single endpoint calls use `httpx.Client`:
+
+```python
+response = product.api.request("health")
+
+assert response.ok
+```
+
+Concurrent endpoint calls use `httpx.AsyncClient`:
 
 Example:
 
 ```python
-results = product.api.request_many(["health", "alerts"], max_workers=2)
+results = product.api.request_many(["health", "alerts"])
 
 assert results["health"].ok
 assert results["alerts"].ok
 ```
 
-Why `ThreadPoolExecutor` first:
+If the test itself is async:
 
-- It is in the Python standard library.
-- It is simple for I/O-bound HTTP requests.
-- It does not force an async test architecture yet.
-- It is easy to replace later.
+```python
+results = await product.api.request_many_async(["health", "alerts"])
+```
 
-When to move to `httpx.AsyncClient`:
+Why `httpx`:
 
-- You need many concurrent endpoint calls.
-- You already use async tests.
-- You need connection pooling, retries, auth, streaming, or richer HTTP behavior.
-- You want one async client shared across API workflows.
+- It supports both sync and async clients.
+- It has connection pooling through client objects.
+- It has a cleaner API for JSON bodies, headers, timeouts, and auth.
+- It scales better if endpoint testing becomes a first-class part of the framework.
+
+## Backend-Only Products
+
+Not every product needs `ui`.
+
+Backend-only products can omit the `ui` section entirely:
+
+```yaml
+product_type: backend
+
+api:
+  endpoints:
+    health:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8081
+      path: /health
+```
+
+The factory still returns a `Product`, but `product.has_ui` will be `False` and `product.pages` will be empty.
+
+Tests for backend-only products should stay API-focused:
+
+```python
+product = ProductFactory.create(None, config)
+
+assert not product.has_ui
+assert product.api.request("health").ok
+```
+
+## Different Product Behavior
+
+The framework scales by using registries.
+
+For common behavior, use the generic `Product`:
+
+```python
+product.api.request("health")
+```
+
+For product-specific behavior, add a subclass and register it:
+
+```python
+class DisplayProduct(Product):
+    def health(self) -> APIResponse:
+        return self.api.request("health")
+
+
+class ProductFactory:
+    PRODUCT_TYPES = {
+        "display": DisplayProduct,
+        "backend": BackendOnlyProduct,
+    }
+```
+
+This keeps the generic path simple while allowing domain-specific behavior when it earns its place.
 
 ## Design Decision Summary
 
@@ -283,7 +384,7 @@ Start generic for structure.
 Add product-specific classes for behavior.
 Derive from operational config only when the data is operational.
 Keep selectors and test tags in test config.
-Use ThreadPoolExecutor now for simple concurrent endpoint checks.
-Move to httpx.AsyncClient when API testing becomes a first-class async workflow.
+Use test_tag as the standard selector strategy when the UI supports it.
+Use httpx.Client for single endpoint checks.
+Use httpx.AsyncClient for concurrent endpoint checks.
 ```
-

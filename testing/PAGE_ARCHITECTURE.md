@@ -479,7 +479,7 @@ These are useful sources to share with others when explaining the design:
 - [MDN: CSS Attribute Selectors](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Selectors/Attribute_selectors) documents selectors like `[data-testid="display-save-settings"]`.
 - [YAML 1.2.2 Specification](https://yaml.org/spec/1.2.2/) is the official YAML language specification for the config format.
 - [Python dataclasses](https://docs.python.org/3/library/dataclasses.html) documents the standard-library feature used for endpoint and API response value objects.
-- [Python concurrent.futures](https://docs.python.org/3/library/concurrent.futures.html) documents the standard-library thread pool used for concurrent endpoint execution.
-- [HTTPX Async Support](https://www.python-httpx.org/async/) is a good reference if the API layer later moves from thread-based concurrency to async HTTP.
+- [HTTPX Clients](https://www.python-httpx.org/advanced/clients/) documents reusable sync clients, connection pooling, and client-level configuration.
+- [HTTPX Async Support](https://www.python-httpx.org/async/) documents the async client used for concurrent endpoint execution.
 - [Refactoring.Guru: Factory Method](https://refactoring.guru/design-patterns/factory-method) is a readable explanation of the factory pattern used by `ProductFactory`, `PageFactory`, and `ElementFactory`.
 - [Refactoring.Guru: Abstract Factory](https://refactoring.guru/design-patterns/abstract-factory) is useful background if the framework later grows into families of related page, element, and product objects.
