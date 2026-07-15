@@ -465,3 +465,13 @@ Pages define what the user can do.
 Tests verify what should happen.
 ```
 
+## Further Reading
+
+These are useful sources to share with others when explaining the design:
+
+- [Selenium: Page Object Models](https://www.selenium.dev/documentation/test_practices/encouraged/page_object_models/) explains the Page Object Model and why it helps keep locators and page-specific behavior out of test code.
+- [Selenium: Locator Strategies](https://www.selenium.dev/documentation/webdriver/elements/locators/) documents how Selenium finds elements with CSS selectors, IDs, names, XPath, and other locator strategies.
+- [MDN: CSS Selectors](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_selectors) is a good reference for understanding the CSS selector syntax used by Selenium.
+- [YAML 1.2.2 Specification](https://yaml.org/spec/1.2.2/) is the official YAML language specification for the config format.
+- [Refactoring.Guru: Factory Method](https://refactoring.guru/design-patterns/factory-method) is a readable explanation of the factory pattern used by `ProductFactory`, `PageFactory`, and `ElementFactory`.
+- [Refactoring.Guru: Abstract Factory](https://refactoring.guru/design-patterns/abstract-factory) is useful background if the framework later grows into families of related page, element, and product objects.
