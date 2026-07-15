@@ -3,12 +3,14 @@ product_type: display
 api:
   endpoints:
     health:
+      method: GET
       protocol: http
       host: localhost
       port: 8080
       path: /health
 
     alerts:
+      method: GET
       protocol: http
       host: localhost
       port: 8080

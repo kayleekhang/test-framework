@@ -66,18 +66,20 @@ ui:
 
 ## API Config
 
-Each endpoint needs `protocol`, `host`, `port`, and `path`.
+Each endpoint needs `protocol`, `host`, `port`, and `path`. `method` defaults to `GET`, but it is better to be explicit.
 
 ```yaml
 api:
   endpoints:
     health:
+      method: GET
       protocol: http
       host: localhost
       port: 8080
       path: /health
 
     alerts:
+      method: GET
       protocol: http
       host: localhost
       port: 8080
@@ -91,6 +93,26 @@ Usage:
 ```python
 health_url = product.api.endpoint("health").url
 ```
+
+Run one endpoint:
+
+```python
+response = product.api.request("health")
+
+assert response.ok
+assert response.status_code == 200
+```
+
+Run multiple endpoints concurrently:
+
+```python
+responses = product.api.request_many(["health", "alerts"], max_workers=2)
+
+assert responses["health"].ok
+assert responses["alerts"].ok
+```
+
+The current API client uses Python's standard-library `ThreadPoolExecutor`. That is a good first choice for simple I/O-bound endpoint checks. If API testing becomes a large async workflow, `httpx.AsyncClient` would be the better next step.
 
 ## UI Config
 
@@ -466,3 +488,7 @@ Add a custom page class only when one of these happens:
 - Generic `page.click("name")` starts making tests hard to read.
 
 This keeps small products small while still allowing complex products to grow page by page.
+
+## More Architecture Notes
+
+For the reasoning behind this design, sources, tradeoffs, operational config guidance, and API concurrency discussion, see [DESIGN_RATIONALE.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/DESIGN_RATIONALE.md:1).

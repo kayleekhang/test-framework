@@ -1,7 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 try:
     from selenium.webdriver.common.by import By
@@ -28,12 +31,28 @@ class Endpoint:
     host: str
     port: int
     path: str
+    method: str = "GET"
     query: dict[str, str] | None = None
+    headers: dict[str, str] | None = None
+    body: dict[str, Any] | str | bytes | None = None
 
     @property
     def url(self) -> str:
         query = f"?{urlencode(self.query)}" if self.query else ""
         return f"{self.protocol}://{self.host}:{self.port}{self.path}{query}"
+
+
+@dataclass(frozen=True)
+class APIResponse:
+    endpoint_name: str
+    url: str
+    status_code: int | None
+    body: str | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.status_code is not None and self.status_code < 400
 
 
 class API:
@@ -42,6 +61,73 @@ class API:
 
     def endpoint(self, name: str) -> Endpoint:
         return self.endpoints[name]
+
+    def request(self, name: str, timeout_seconds: int = 10) -> APIResponse:
+        endpoint = self.endpoint(name)
+        headers = endpoint.headers or {}
+        body = self._encode_body(endpoint.body, headers)
+
+        request = Request(
+            endpoint.url,
+            data=body,
+            headers=headers,
+            method=endpoint.method.upper(),
+        )
+
+        try:
+            with urlopen(request, timeout=timeout_seconds) as response:
+                response_body = response.read().decode("utf-8", errors="replace")
+                return APIResponse(
+                    endpoint_name=name,
+                    url=endpoint.url,
+                    status_code=response.status,
+                    body=response_body,
+                )
+        except Exception as exc:
+            return APIResponse(
+                endpoint_name=name,
+                url=endpoint.url,
+                status_code=None,
+                error=str(exc),
+            )
+
+    def request_many(
+        self,
+        names: list[str] | None = None,
+        max_workers: int = 5,
+        timeout_seconds: int = 10,
+    ) -> dict[str, APIResponse]:
+        endpoint_names = names or list(self.endpoints)
+        results: dict[str, APIResponse] = {}
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_name = {
+                executor.submit(self.request, name, timeout_seconds): name
+                for name in endpoint_names
+            }
+
+            for future in as_completed(future_to_name):
+                name = future_to_name[future]
+                results[name] = future.result()
+
+        return results
+
+    @staticmethod
+    def _encode_body(
+        body: dict[str, Any] | str | bytes | None,
+        headers: dict[str, str],
+    ) -> bytes | None:
+        if body is None:
+            return None
+
+        if isinstance(body, bytes):
+            return body
+
+        if isinstance(body, str):
+            return body.encode("utf-8")
+
+        headers.setdefault("Content-Type", "application/json")
+        return json.dumps(body).encode("utf-8")
 
 
 class UiElement:
