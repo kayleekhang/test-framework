@@ -46,7 +46,8 @@ Use `lo0` for local macOS loopback, `lo` for Linux loopback, or a real VM interf
 ## Python Usage
 
 ```python
-from product import ProductFactory, load_product_config
+from config import load_product_config
+from factory import ProductFactory
 from reporting import TestReport
 
 

@@ -4,7 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from product import ProductFactory, load_product_config
+from config import load_product_config
+from factory import ProductFactory
 from probes import GStreamerProbe, WiresharkProbe
 from reporting import TestReport
 

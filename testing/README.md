@@ -2,9 +2,13 @@
 
 This directory contains a small config-driven UI testing layer for Selenium.
 
-Product configuration should live in `.yml` files. Python should load the YAML, build a `Product`, and then let tests interact with pages and elements by name.
+Product configuration should live in `.yml` files. Python should load the YAML, build a `Product`, and then let tests interact with APIs, pages, elements, and probes by name.
 
 ```python
+from config import load_product_config
+from factory import ProductFactory
+
+
 config = load_product_config("configs/display_product.yml")
 product = ProductFactory.create(driver, config)
 
@@ -31,6 +35,38 @@ Product
 - `API` owns named endpoints.
 - `Page` owns named UI elements for one route.
 - `UiElement` wraps a Selenium selector and exposes actions like `click()`, `text()`, and `is_visible()`.
+
+## Module Layout
+
+The implementation is split by responsibility:
+
+```text
+testing/
+  api.py              HTTP endpoint models and httpx client
+  config.py           YAML config loading
+  factory.py          ProductFactory assembly logic
+  product.py          compatibility re-exports for older imports
+  products.py         Product classes and product-specific behavior
+  probes.py           GStreamer and tshark/Wireshark wrappers
+  reporting.py        JSON and HTML report builder
+  cli.py              command-line entry points
+  ui/
+    elements.py       Selenium element adapters
+    pages.py          Page objects and PageFactory
+```
+
+Preferred imports for new code:
+
+```python
+from config import load_product_config
+from factory import ProductFactory
+```
+
+Existing imports still work:
+
+```python
+from product import load_product_config, ProductFactory
+```
 
 ## Config Location
 
@@ -435,7 +471,8 @@ from pathlib import Path
 
 from selenium import webdriver
 
-from product import ProductFactory, load_product_config
+from config import load_product_config
+from factory import ProductFactory
 
 
 def test_settings_save():
@@ -459,7 +496,8 @@ from pathlib import Path
 import pytest
 from selenium import webdriver
 
-from product import ProductFactory, load_product_config
+from config import load_product_config
+from factory import ProductFactory
 
 
 @pytest.fixture
@@ -481,6 +519,105 @@ def test_dashboard_alert(product):
     assert dashboard.alert_is_visible()
 
     dashboard.acknowledge_alert()
+```
+
+## Running Different Combinations
+
+Backend-only product:
+
+```python
+from config import load_product_config
+from factory import ProductFactory
+
+
+def test_backend_health():
+    config = load_product_config("configs/backend_product.yml")
+    product = ProductFactory.create(driver=None, config=config)
+
+    response = product.api.request("health")
+
+    assert not product.has_ui
+    assert response.ok
+```
+
+Concurrent backend endpoints:
+
+```python
+def test_backend_endpoints():
+    config = load_product_config("configs/backend_product.yml")
+    product = ProductFactory.create(driver=None, config=config)
+
+    responses = product.api.request_many(["health", "status"])
+
+    assert responses["health"].ok
+    assert responses["status"].ok
+```
+
+UI product:
+
+```python
+from selenium import webdriver
+
+
+def test_display_settings():
+    driver = webdriver.Chrome()
+    config = load_product_config("configs/display_product.yml")
+    product = ProductFactory.create(driver=driver, config=config)
+
+    settings = product.page("settings").open()
+    settings.save()
+
+    driver.quit()
+```
+
+Audio/probe product:
+
+```python
+def test_audio_capture():
+    config = load_product_config("configs/audio_device_product.yml")
+    product = ProductFactory.create(driver=None, config=config)
+
+    capture = product.capture_audio_packets(timeout_seconds=5)
+
+    assert capture.ok
+```
+
+Report-producing pytest test:
+
+```python
+from reporting import TestReport
+
+
+def test_backend_health_report():
+    config = load_product_config("configs/backend_product.yml")
+    product = ProductFactory.create(driver=None, config=config)
+    report = TestReport("backend health")
+
+    response = product.api.request("health")
+    report.add_step(
+        "health endpoint",
+        "passed" if response.ok else "failed",
+        details={"status_code": response.status_code, "error": response.error},
+    )
+    report.write("backend-health")
+
+    assert response.ok
+```
+
+CLI probes:
+
+```bash
+python cli.py gst-probe --config configs/audio_device_product.yml --probe send_test_tone --timeout 10
+```
+
+```bash
+python cli.py tshark-probe --config configs/audio_device_product.yml --probe audio_packets --timeout 10
+```
+
+CLI report demo:
+
+```bash
+python cli.py report-demo --output-dir artifacts/reports
 ```
 
 ## When to Use YAML vs Python

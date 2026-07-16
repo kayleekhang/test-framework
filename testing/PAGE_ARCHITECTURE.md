@@ -225,11 +225,11 @@ Complex page: YAML + page class + specialized element adapters
 
 Factories build the runtime objects from config.
 
-There are three important factories in `product.py`.
+There are three important factories in the testing modules.
 
 ## ProductFactory
 
-`ProductFactory` is the top-level builder.
+`ProductFactory` lives in `factory.py` and is the top-level builder.
 
 It receives:
 
@@ -266,7 +266,7 @@ The test does not need to know how pages or elements are constructed.
 
 ## PageFactory
 
-`PageFactory` chooses which Python page class to use.
+`PageFactory` lives in `ui/pages.py` and chooses which Python page class to use.
 
 The registry looks like this:
 
@@ -308,7 +308,7 @@ reports:
 
 ## ElementFactory
 
-`ElementFactory` chooses which element adapter to use.
+`ElementFactory` lives in `ui/elements.py` and chooses which element adapter to use.
 
 The registry looks like this:
 
