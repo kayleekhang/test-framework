@@ -1,0 +1,85 @@
+---
+- name: Deploy black-box test framework
+  hosts: test_nodes
+  become: true
+  vars:
+    test_framework_src: "{{ playbook_dir }}/.."
+    test_framework_dest: /opt/blackbox-testing
+    test_framework_venv: /opt/blackbox-testing/.venv
+    install_gstreamer: true
+    install_tshark: true
+
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - rsync
+        state: present
+        update_cache: true
+
+    - name: Install GStreamer packages
+      ansible.builtin.apt:
+        name:
+          - gstreamer1.0-tools
+          - gstreamer1.0-plugins-base
+          - gstreamer1.0-plugins-good
+          - gstreamer1.0-plugins-bad
+        state: present
+      when: install_gstreamer | bool
+
+    - name: Install tshark
+      ansible.builtin.apt:
+        name:
+          - tshark
+        state: present
+      when: install_tshark | bool
+
+    - name: Create framework directory
+      ansible.builtin.file:
+        path: "{{ test_framework_dest }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+
+    - name: Sync framework files
+      ansible.posix.synchronize:
+        src: "{{ test_framework_src }}/"
+        dest: "{{ test_framework_dest }}/"
+        delete: true
+        rsync_opts:
+          - "--exclude=__pycache__"
+          - "--exclude=.pytest_cache"
+      delegate_to: localhost
+      become: false
+
+    - name: Create Python virtual environment
+      ansible.builtin.command:
+        cmd: "python3 -m venv {{ test_framework_venv }}"
+        creates: "{{ test_framework_venv }}/bin/python"
+
+    - name: Install Python dependencies
+      ansible.builtin.pip:
+        requirements: "{{ test_framework_dest }}/requirements.txt"
+        virtualenv: "{{ test_framework_venv }}"
+
+    - name: Create artifact directories
+      ansible.builtin.file:
+        path: "{{ test_framework_dest }}/{{ item }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0755"
+      loop:
+        - artifacts
+        - artifacts/captures
+        - artifacts/reports
+
+    - name: Verify CLI imports
+      ansible.builtin.command:
+        cmd: "{{ test_framework_venv }}/bin/python -m py_compile api.py config.py products.py product.py probes.py reporting.py cli.py"
+        chdir: "{{ test_framework_dest }}"
+      changed_when: false

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 from probes import GStreamerProbe, WiresharkProbe
 from reporting import TestReport
 

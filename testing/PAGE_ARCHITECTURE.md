@@ -229,7 +229,7 @@ There are three important factories in the testing modules.
 
 ## ProductFactory
 
-`ProductFactory` lives in `factory.py` and is the top-level builder.
+`ProductFactory` lives in `products.py` and is the top-level builder. `factory.py` is only a compatibility re-export.
 
 It receives:
 

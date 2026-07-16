@@ -6,7 +6,7 @@ Product configuration should live in `.yml` files. Python should load the YAML, 
 
 ```python
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 
 
 config = load_product_config("configs/display_product.yml")
@@ -44,9 +44,9 @@ The implementation is split by responsibility:
 testing/
   api.py              HTTP endpoint models and httpx client
   config.py           YAML config loading
-  factory.py          ProductFactory assembly logic
+  factory.py          compatibility re-export for ProductFactory
   product.py          compatibility re-exports for older imports
-  products.py         Product classes and product-specific behavior
+  products.py         Product classes, product-specific behavior, ProductFactory
   probes.py           GStreamer and tshark/Wireshark wrappers
   reporting.py        JSON and HTML report builder
   cli.py              command-line entry points
@@ -59,14 +59,23 @@ Preferred imports for new code:
 
 ```python
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 ```
 
-Existing imports still work:
+Compatibility imports still work:
 
 ```python
 from product import load_product_config, ProductFactory
+from factory import ProductFactory
 ```
+
+Add new product behavior in `products.py`.
+
+Add new page behavior in `ui/pages.py`.
+
+Add new element adapters in `ui/elements.py`.
+
+Add new external observation tools in `probes.py`.
 
 ## Config Location
 
@@ -472,7 +481,7 @@ from pathlib import Path
 from selenium import webdriver
 
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 
 
 def test_settings_save():
@@ -497,7 +506,7 @@ import pytest
 from selenium import webdriver
 
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 
 
 @pytest.fixture
@@ -527,7 +536,7 @@ Backend-only product:
 
 ```python
 from config import load_product_config
-from factory import ProductFactory
+from products import ProductFactory
 
 
 def test_backend_health():
@@ -676,3 +685,5 @@ This keeps small products small while still allowing complex products to grow pa
 For the reasoning behind this design, sources, tradeoffs, operational config guidance, and API concurrency discussion, see [DESIGN_RATIONALE.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/DESIGN_RATIONALE.md:1).
 
 For VM-based black-box testing with GStreamer, tshark/Wireshark, probe configs, CLI commands, and HTML/JSON reports, see [BLACK_BOX_PROBES.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/BLACK_BOX_PROBES.md:1).
+
+For deploying this framework onto test VMs, Raspberry Pis, or WIC-like hardware with Ansible, see [ANSIBLE_DEPLOYMENT.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/ANSIBLE_DEPLOYMENT.md:1).
