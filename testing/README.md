@@ -677,3 +677,5 @@ For the reasoning behind this design, sources, tradeoffs, operational config gui
 For VM-based black-box testing with GStreamer, tshark/Wireshark, probe configs, CLI commands, and HTML/JSON reports, see [BLACK_BOX_PROBES.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/BLACK_BOX_PROBES.md:1).
 
 For deploying this framework onto test VMs, Raspberry Pis, or WIC-like hardware with Ansible, see [ANSIBLE_DEPLOYMENT.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/ANSIBLE_DEPLOYMENT.md:1).
+
+For organizing pytest suites by product requirements and cross-product capabilities, see [PYTEST_REQUIREMENTS.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/PYTEST_REQUIREMENTS.md:1).
