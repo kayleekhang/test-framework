@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+from probes import Probe, ProbeFactory
+
 try:
     import httpx
 except ImportError:
@@ -344,9 +346,16 @@ class PageFactory:
 
 
 class Product:
-    def __init__(self, api: API, pages: dict[str, Page], config: dict[str, Any]):
+    def __init__(
+        self,
+        api: API,
+        pages: dict[str, Page],
+        probes: dict[str, Probe],
+        config: dict[str, Any],
+    ):
         self.api = api
         self.pages = pages
+        self.probes = probes
         self.config = config
 
     @property
@@ -359,6 +368,12 @@ class Product:
             raise KeyError(f"Unknown page '{name}'. Available pages: {available}")
         return self.pages[name]
 
+    def probe(self, name: str) -> Probe:
+        if name not in self.probes:
+            available = ", ".join(sorted(self.probes)) or "none"
+            raise KeyError(f"Unknown probe '{name}'. Available probes: {available}")
+        return self.probes[name]
+
 
 class BackendOnlyProduct(Product):
     pass
@@ -369,8 +384,20 @@ class DisplayProduct(Product):
         return self.api.request("health")
 
 
+class AudioDeviceProduct(BackendOnlyProduct):
+    def send_test_tone(self):
+        return self.probe("send_test_tone").run_pipeline()
+
+    def receive_audio(self):
+        return self.probe("receive_audio").run_pipeline()
+
+    def capture_audio_packets(self, timeout_seconds: int | None = None):
+        return self.probe("audio_packets").capture(timeout_seconds=timeout_seconds)
+
+
 class ProductFactory:
     PRODUCT_TYPES = {
+        "audio_device": AudioDeviceProduct,
         "backend": BackendOnlyProduct,
         "display": DisplayProduct,
     }
@@ -402,8 +429,13 @@ class ProductFactory:
                 for page_name, page_config in ui_config.get("pages", {}).items()
             }
 
+        probes = {
+            probe_name: ProbeFactory.create(probe_name, probe_config)
+            for probe_name, probe_config in config.get("probes", {}).items()
+        }
+
         product_cls = ProductFactory.PRODUCT_TYPES.get(config.get("product_type"), Product)
-        return product_cls(api=api, pages=pages, config=config)
+        return product_cls(api=api, pages=pages, probes=probes, config=config)
 
 
 def load_product_config(config_path: str | Path) -> dict[str, Any]:

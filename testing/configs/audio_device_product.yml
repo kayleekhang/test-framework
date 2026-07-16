@@ -1,0 +1,35 @@
+product_type: audio_device
+
+api:
+  endpoints:
+    health:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8082
+      path: /health
+
+    audio_status:
+      method: GET
+      protocol: http
+      host: localhost
+      port: 8082
+      path: /api/audio/status
+
+probes:
+  send_test_tone:
+    type: gstreamer
+    timeout_seconds: 10
+    pipeline: audiotestsrc wave=sine freq=1000 num-buffers=500 ! audioconvert ! audioresample ! mulawenc ! rtppcmupay ! udpsink host=127.0.0.1 port=5004
+
+  receive_audio:
+    type: gstreamer
+    timeout_seconds: 10
+    pipeline: udpsrc port=5004 caps=application/x-rtp,media=audio,clock-rate=8000,encoding-name=PCMU,payload=0 ! rtppcmudepay ! mulawdec ! audioconvert ! fakesink sync=false
+
+  audio_packets:
+    type: wireshark
+    interface: lo0
+    capture_filter: udp port 5004
+    output_path: artifacts/captures/audio_packets.pcapng
+    timeout_seconds: 10

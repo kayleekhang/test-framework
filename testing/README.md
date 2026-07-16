@@ -537,3 +537,5 @@ This keeps small products small while still allowing complex products to grow pa
 ## More Architecture Notes
 
 For the reasoning behind this design, sources, tradeoffs, operational config guidance, and API concurrency discussion, see [DESIGN_RATIONALE.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/DESIGN_RATIONALE.md:1).
+
+For VM-based black-box testing with GStreamer, tshark/Wireshark, probe configs, CLI commands, and HTML/JSON reports, see [BLACK_BOX_PROBES.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/BLACK_BOX_PROBES.md:1).
