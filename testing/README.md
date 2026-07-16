@@ -44,8 +44,6 @@ The implementation is split by responsibility:
 testing/
   api.py              HTTP endpoint models and httpx client
   config.py           YAML config loading
-  factory.py          compatibility re-export for ProductFactory
-  product.py          compatibility re-exports for older imports
   products.py         Product classes, product-specific behavior, ProductFactory
   probes.py           GStreamer and tshark/Wireshark wrappers
   reporting.py        JSON and HTML report builder
@@ -62,13 +60,6 @@ from config import load_product_config
 from products import ProductFactory
 ```
 
-Compatibility imports still work:
-
-```python
-from product import load_product_config, ProductFactory
-from factory import ProductFactory
-```
-
 Add new product behavior in `products.py`.
 
 Add new page behavior in `ui/pages.py`.
@@ -83,7 +74,6 @@ Example:
 
 ```text
 testing/
-  product.py
   configs/
     display_product.yml
 ```

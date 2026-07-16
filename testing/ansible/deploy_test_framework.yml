@@ -80,6 +80,6 @@
 
     - name: Verify CLI imports
       ansible.builtin.command:
-        cmd: "{{ test_framework_venv }}/bin/python -m py_compile api.py config.py products.py product.py probes.py reporting.py cli.py"
+        cmd: "{{ test_framework_venv }}/bin/python -m py_compile api.py config.py products.py probes.py reporting.py cli.py"
         chdir: "{{ test_framework_dest }}"
       changed_when: false
