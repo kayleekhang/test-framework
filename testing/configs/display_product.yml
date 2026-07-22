@@ -19,6 +19,20 @@ api:
 ui:
   base_url: http://localhost:3000
   selector_prefix: display
+  selenium:
+    browser: chrome
+    options:
+      headless: false
+      arguments:
+        - --disable-dev-shm-usage
+      page_load_strategy: normal
+    timeouts:
+      implicit_wait_seconds: 0
+      page_load_seconds: 30
+      script_seconds: 30
+    window_size:
+      width: 1440
+      height: 900
 
   pages:
     dashboard:

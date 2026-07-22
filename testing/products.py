@@ -6,6 +6,7 @@ from api import API, APIResponse, Endpoint
 from probes import Probe, ProbeFactory
 from ui.elements import WebDriver
 from ui.pages import Page, PageFactory
+from ui.selenium import SeleniumWrapper
 
 
 class Product:
@@ -15,11 +16,14 @@ class Product:
         pages: dict[str, Page],
         probes: dict[str, Probe],
         config: dict[str, Any],
+        selenium: SeleniumWrapper | None = None,
     ):
         self.api = api
         self.pages = pages
         self.probes = probes
         self.config = config
+        self.selenium = selenium
+        self.current_page: Page | None = None
 
     @property
     def has_ui(self) -> bool:
@@ -30,6 +34,29 @@ class Product:
             available = ", ".join(sorted(self.pages)) or "none"
             raise KeyError(f"Unknown page '{name}'. Available pages: {available}")
         return self.pages[name]
+
+    def open(self, page_name: str) -> Product:
+        self.current_page = self.page(page_name).open()
+        return self
+
+    def click(self, element_name: str) -> Product:
+        self._current_page().click(element_name)
+        return self
+
+    def text(self, element_name: str) -> str:
+        return self._current_page().text(element_name)
+
+    def is_visible(self, element_name: str) -> bool:
+        return self._current_page().is_visible(element_name)
+
+    def quit(self) -> None:
+        if self.selenium is not None:
+            self.selenium.quit()
+
+    def _current_page(self) -> Page:
+        if self.current_page is None:
+            raise RuntimeError("Open a page before interacting with its elements.")
+        return self.current_page
 
     def probe(self, name: str) -> Probe:
         if name not in self.probes:
@@ -79,11 +106,16 @@ class ProductFactory:
         ui_config = config.get("ui")
 
         if ui_config:
-            product_prefix = ui_config["selector_prefix"]
+            product_prefix = ui_config.get("selector_prefix", "")
             base_url = ui_config["base_url"]
+            selenium = SeleniumWrapper(
+                base_url=base_url,
+                config=ui_config.get("selenium"),
+                driver=driver,
+            )
             pages = {
                 page_name: PageFactory.create(
-                    driver=driver,
+                    driver=selenium,
                     base_url=base_url,
                     product_prefix=product_prefix,
                     name=page_name,
@@ -98,4 +130,11 @@ class ProductFactory:
         }
 
         product_cls = ProductFactory.PRODUCT_TYPES.get(config.get("product_type"), Product)
-        return product_cls(api=api, pages=pages, probes=probes, config=config)
+        selenium = selenium if ui_config else None
+        return product_cls(
+            api=api,
+            pages=pages,
+            probes=probes,
+            config=config,
+            selenium=selenium,
+        )
