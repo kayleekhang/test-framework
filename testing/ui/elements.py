@@ -89,12 +89,13 @@ class ElementFactory:
         cls,
         driver: WebDriver,
         product_prefix: str,
+        selector_suffix: str,
         name: str,
         config: dict[str, Any],
     ) -> UiElement:
         element_type = config.get("type", "text")
         element_cls = cls.ELEMENT_TYPES.get(element_type, UiElement)
-        selector = cls._selector(product_prefix, config)
+        selector = cls._selector(product_prefix, selector_suffix, config)
 
         return element_cls(
             driver=driver,
@@ -105,11 +106,20 @@ class ElementFactory:
         )
 
     @staticmethod
-    def _selector(product_prefix: str, config: dict[str, Any]) -> str:
+    def _selector(
+        product_prefix: str,
+        selector_suffix: str,
+        config: dict[str, Any],
+    ) -> str:
         if "selector" in config:
             return config["selector"]
 
         if "test_tag" in config:
-            return f'[data-testid="{product_prefix}-{config["test_tag"]}"]'
+            test_tag = config["test_tag"]
+            if selector_suffix:
+                test_tag = f"{test_tag}_{selector_suffix}"
+            if product_prefix:
+                test_tag = f"{product_prefix}-{test_tag}"
+            return f'[data-testid="{test_tag}"]'
 
         raise ValueError(f"Element config needs selector or test_tag: {config}")

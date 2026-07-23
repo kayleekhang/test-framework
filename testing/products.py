@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from api import API, APIResponse, Endpoint
@@ -7,6 +8,7 @@ from probes import Probe, ProbeFactory
 from ui.elements import WebDriver
 from ui.pages import Page, PageFactory
 from ui.selenium import SeleniumWrapper
+from websockets_client import WebSocketChannel, WebSocketFactory
 
 
 class Product:
@@ -15,13 +17,23 @@ class Product:
         api: API,
         pages: dict[str, Page],
         probes: dict[str, Probe],
-        config: dict[str, Any],
+        websockets: dict[str, WebSocketChannel],
+        capability_config: dict[str, Any],
+        operational_config: dict[str, Any],
+        name: str | None = None,
+        ip: str | None = None,
         selenium: SeleniumWrapper | None = None,
     ):
         self.api = api
         self.pages = pages
         self.probes = probes
-        self.config = config
+        self.websockets = websockets
+        self.capability_config = capability_config
+        self.operational_config = operational_config
+        # Backwards-compatible alias for callers that used product.config.
+        self.config = capability_config
+        self.name = name
+        self.ip = ip
         self.selenium = selenium
         self.current_page: Page | None = None
 
@@ -48,6 +60,12 @@ class Product:
 
     def is_visible(self, element_name: str) -> bool:
         return self._current_page().is_visible(element_name)
+
+    def websocket(self, name: str) -> WebSocketChannel:
+        if name not in self.websockets:
+            available = ", ".join(sorted(self.websockets)) or "none"
+            raise KeyError(f"Unknown WebSocket '{name}'. Available channels: {available}")
+        return self.websockets[name]
 
     def quit(self) -> None:
         if self.selenium is not None:
@@ -93,21 +111,39 @@ class ProductFactory:
     }
 
     @staticmethod
-    def create(driver: WebDriver, config: dict[str, Any]) -> Product:
-        api = API(
-            endpoints={
-                name: Endpoint(**endpoint_config)
-                for name, endpoint_config in config.get("api", {}).get("endpoints", {}).items()
-            },
-            base_headers=config.get("api", {}).get("headers"),
+    def create(
+        driver: WebDriver = None,
+        config: dict[str, Any] | None = None,
+        *,
+        capability_config: dict[str, Any] | None = None,
+        operational_config: dict[str, Any] | None = None,
+        product_group: str | None = None,
+        product_name: str | None = None,
+    ) -> Product:
+        capability = deepcopy(capability_config or config or {})
+        operation = ProductFactory._select_operation(
+            operational_config=operational_config,
+            product_group=product_group,
+            product_name=product_name,
         )
+        host = operation.get("ip") or operation.get("host")
+
+        api_config = capability.get("api", {})
+        endpoints = {}
+        for name, endpoint_config in api_config.get("endpoints", {}).items():
+            resolved = deepcopy(endpoint_config)
+            if host:
+                resolved["host"] = host
+            elif "host" not in resolved:
+                raise ValueError(f"API endpoint '{name}' needs an operational IP or host")
+            endpoints[name] = Endpoint(**resolved)
+        api = API(endpoints=endpoints, base_headers=api_config.get("headers"))
 
         pages: dict[str, Page] = {}
-        ui_config = config.get("ui")
-
+        selenium = None
+        ui_config = capability.get("ui")
         if ui_config:
-            product_prefix = ui_config.get("selector_prefix", "")
-            base_url = ui_config["base_url"]
+            base_url = ProductFactory._ui_base_url(ui_config, operation)
             selenium = SeleniumWrapper(
                 base_url=base_url,
                 config=ui_config.get("selenium"),
@@ -117,7 +153,8 @@ class ProductFactory:
                 page_name: PageFactory.create(
                     driver=selenium,
                     base_url=base_url,
-                    product_prefix=product_prefix,
+                    product_prefix=ui_config.get("selector_prefix", ""),
+                    selector_suffix=operation.get("name", ""),
                     name=page_name,
                     config=page_config,
                 )
@@ -125,16 +162,81 @@ class ProductFactory:
             }
 
         probes = {
-            probe_name: ProbeFactory.create(probe_name, probe_config)
-            for probe_name, probe_config in config.get("probes", {}).items()
+            name: ProbeFactory.create(name, probe_config)
+            for name, probe_config in capability.get("probes", {}).items()
+        }
+        websockets = {
+            name: WebSocketFactory.create(name, channel_config, host=host)
+            for name, channel_config in capability.get("websockets", {}).items()
         }
 
-        product_cls = ProductFactory.PRODUCT_TYPES.get(config.get("product_type"), Product)
-        selenium = selenium if ui_config else None
+        product_cls = ProductFactory.PRODUCT_TYPES.get(
+            capability.get("product_type"), Product
+        )
         return product_cls(
             api=api,
             pages=pages,
             probes=probes,
-            config=config,
+            websockets=websockets,
+            capability_config=capability,
+            operational_config=operation,
+            name=operation.get("name"),
+            ip=host,
             selenium=selenium,
         )
+
+    @staticmethod
+    def _ui_base_url(ui_config: dict[str, Any], operation: dict[str, Any]) -> str:
+        host = operation.get("ip") or operation.get("host")
+        if not host:
+            if "base_url" in ui_config:
+                return ui_config["base_url"].rstrip("/")
+            raise ValueError("UI capability needs an operational IP or host")
+
+        protocol = operation.get("ui_protocol", ui_config.get("protocol", "https"))
+        port = operation.get("ui_port", ui_config.get("port", 8080))
+        return f"{protocol}://{host}:{port}"
+
+    @staticmethod
+    def _select_operation(
+        operational_config: dict[str, Any] | None,
+        product_group: str | None,
+        product_name: str | None,
+    ) -> dict[str, Any]:
+        if operational_config is None:
+            if product_name or product_group:
+                raise ValueError(
+                    "product_group and product_name require operational_config"
+                )
+            return {}
+
+        if not product_group or not product_name:
+            raise ValueError(
+                "product_group and product_name are required with operational_config"
+            )
+        if product_group not in operational_config:
+            available = ", ".join(sorted(operational_config)) or "none"
+            raise KeyError(
+                f"Unknown operational product group '{product_group}'. "
+                f"Available groups: {available}"
+            )
+
+        matches = [
+            instance
+            for instance in operational_config[product_group]
+            if instance.get("name") == product_name
+        ]
+        if not matches:
+            available = ", ".join(
+                instance.get("name", "<unnamed>")
+                for instance in operational_config[product_group]
+            ) or "none"
+            raise KeyError(
+                f"Unknown product '{product_name}' in '{product_group}'. "
+                f"Available products: {available}"
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"Product name '{product_name}' is duplicated in '{product_group}'"
+            )
+        return deepcopy(matches[0])

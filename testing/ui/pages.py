@@ -11,12 +11,14 @@ class Page:
         driver: WebDriver,
         base_url: str,
         product_prefix: str,
+        selector_suffix: str,
         name: str,
         config: dict[str, Any],
     ):
         self.driver = driver
         self.base_url = base_url.rstrip("/")
         self.product_prefix = product_prefix
+        self.selector_suffix = selector_suffix
         self.name = name
         self.config = config
         self.route = config["route"]
@@ -24,6 +26,7 @@ class Page:
             element_name: ElementFactory.create(
                 driver=driver,
                 product_prefix=product_prefix,
+                selector_suffix=selector_suffix,
                 name=element_name,
                 config=element_config,
             )
@@ -78,6 +81,7 @@ class PageFactory:
         product_prefix: str,
         name: str,
         config: dict[str, Any],
+        selector_suffix: str = "",
     ) -> Page:
         page_type = config.get("page_type", "base")
         page_cls = cls.PAGE_TYPES.get(page_type, Page)
@@ -85,6 +89,7 @@ class PageFactory:
             driver=driver,
             base_url=base_url,
             product_prefix=product_prefix,
+            selector_suffix=selector_suffix,
             name=name,
             config=config,
         )

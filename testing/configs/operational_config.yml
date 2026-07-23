@@ -1,0 +1,21 @@
+productTypeOne:
+  - name: p1
+    capability: display
+    ip: 10.0.0.1
+  - name: p2
+    capability: display
+    ip: 10.0.0.2
+  - name: p3
+    capability: display
+    ip: 10.0.0.3
+
+productTypeTwo:
+  - name: p1
+    capability: display
+    ip: 10.0.0.1
+  - name: p2
+    capability: display
+    ip: 10.0.0.2
+  - name: p3
+    capability: display
+    ip: 10.0.0.3
