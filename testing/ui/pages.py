@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ui.elements import ElementFactory, UiElement, WebDriver
+from factory import ElementFactory
+from ui.elements import UiElement, WebDriver
 
 
 class Page:
@@ -52,44 +53,3 @@ class Page:
 
     def is_visible(self, name: str) -> bool:
         return self.element(name).is_visible()
-
-
-class DashboardPage(Page):
-    def acknowledge_alert(self):
-        self.click("acknowledge_alert")
-
-    def alert_is_visible(self) -> bool:
-        return self.is_visible("alert_popup")
-
-
-class SettingsPage(Page):
-    def save(self):
-        self.click("save")
-
-
-class PageFactory:
-    PAGE_TYPES = {
-        "dashboard": DashboardPage,
-        "settings": SettingsPage,
-    }
-
-    @classmethod
-    def create(
-        cls,
-        driver: WebDriver,
-        base_url: str,
-        product_prefix: str,
-        name: str,
-        config: dict[str, Any],
-        selector_suffix: str = "",
-    ) -> Page:
-        page_type = config.get("page_type", "base")
-        page_cls = cls.PAGE_TYPES.get(page_type, Page)
-        return page_cls(
-            driver=driver,
-            base_url=base_url,
-            product_prefix=product_prefix,
-            selector_suffix=selector_suffix,
-            name=name,
-            config=config,
-        )

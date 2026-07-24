@@ -1,196 +1,142 @@
 # Ansible Deployment
 
-Use Ansible to install this test framework onto test VMs, Raspberry Pis, or WIC-like hardware targets.
+Ansible installs the test runtime and deploys operational configuration.
+Reusable product capabilities remain Python code in the test package.
 
-The target machine becomes the black-box test node:
+## What to deploy
 
 ```text
-test node
-  runs pytest
-  calls product backend APIs
-  drives Selenium if browser/UI testing is needed
-  runs gst-launch-1.0 for audio/media probes
-  runs tshark for packet captures
-  writes reports and artifacts
+testing/
+  api.py
+  builders.py
+  factory.py
+  products.py
+  probes.py
+  websockets_client.py
+  conftest.py
+  requirements.txt
+  configs/
+    operational_config.yml
+  ui/
+  tests/
 ```
 
-## Files
+`display_product.yml` no longer exists. Display pages and capabilities are
+defined by `display_product_builder()` in `products.py`.
 
-Example files:
+## Operational inventory
 
-- [ansible/inventory.example.ini](/Users/kayleekhang/kyle-june-26/test-framework/testing/ansible/inventory.example.ini:1)
-- [ansible/deploy_test_framework.yml](/Users/kayleekhang/kyle-june-26/test-framework/testing/ansible/deploy_test_framework.yml:1)
-
-## Run Deployment
-
-From `test-framework/testing`:
-
-```bash
-ansible-playbook \
-  -i ansible/inventory.example.ini \
-  ansible/deploy_test_framework.yml
-```
-
-Override install location:
-
-```bash
-ansible-playbook \
-  -i ansible/inventory.example.ini \
-  ansible/deploy_test_framework.yml \
-  -e test_framework_dest=/opt/my-test-framework
-```
-
-Skip media tools for backend-only nodes:
-
-```bash
-ansible-playbook \
-  -i ansible/inventory.example.ini \
-  ansible/deploy_test_framework.yml \
-  -e install_gstreamer=false \
-  -e install_tshark=false
-```
-
-## Target Types
-
-Use inventory groups to distinguish target classes:
-
-```ini
-[test_vms]
-test-vm-1 ansible_host=192.168.56.20 ansible_user=ubuntu test_framework_profile=vm
-
-[raspberry_pis]
-pi-audio-1 ansible_host=192.168.56.30 ansible_user=pi test_framework_profile=pi
-
-[wics]
-wic-1 ansible_host=192.168.56.40 ansible_user=ubuntu test_framework_profile=wic
-```
-
-The same framework can run everywhere, but host vars should describe hardware differences:
-
-- network interface, such as `eth0`, `ens160`, `wlan0`, or `lo`
-- whether GStreamer is installed
-- whether tshark is installed
-- product IPs and ports
-- audio device names
-- browser availability for Selenium
-
-## Recommended Host Vars
-
-Example:
+Ansible may render or copy a site-specific operational file:
 
 ```yaml
-test_framework_profile: pi
-capture_interface: eth0
-audio_input_device: hw:1,0
-audio_output_device: hw:1,0
-product_api_host: 192.168.56.100
-product_api_port: 8080
+productTypeOne:
+  builder: display
+  instances:
+    - name: p1
+      ip: 10.20.0.11
+    - name: p2
+      ip: 10.20.0.12
+
+audioDevices:
+  builder: audio_device
+  instances:
+    - name: audio-1
+      ip: 10.20.0.30
 ```
 
-Use those values to generate product test YAML before running pytest.
+Names and addresses may be derived from Ansible inventory variables. Builder
+names must match those registered by the pytest fixture or application entry
+point.
 
-## Operational Config Flow
-
-Recommended flow:
-
-```text
-1. Ansible provisions the test node.
-2. Ansible installs Python dependencies and external tools.
-3. Ansible writes or templates generated product test configs.
-4. pytest runs on the test node.
-5. Reports and artifacts are collected from artifacts/.
-```
-
-You can template configs with Ansible:
-
-```text
-templates/audio_device_product.yml.j2
-  -> /opt/blackbox-testing/configs/audio_device_product.yml
-```
-
-The template can fill operational values:
+## Example variables
 
 ```yaml
-host: "{{ product_api_host }}"
-port: {{ product_api_port }}
-interface: "{{ capture_interface }}"
+test_framework_root: /opt/product-testing
+test_operational_config: /etc/product-testing/site.yml
+test_python: /opt/product-testing/.venv/bin/python
 ```
 
-Keep test-only values in the template or test config:
+## Installation
 
-- `test_tag`
-- probe names
-- packet filters
-- expected status names
-- timeouts
-
-## Running Tests Remotely
-
-After deployment:
-
-```bash
-ssh ubuntu@test-vm-1
-cd /opt/blackbox-testing
-source .venv/bin/activate
-pytest
-```
-
-Run a CLI probe:
-
-```bash
-python cli.py tshark-probe \
-  --config configs/audio_device_product.yml \
-  --probe audio_packets \
-  --timeout 10
-```
-
-Run a GStreamer probe:
-
-```bash
-python cli.py gst-probe \
-  --config configs/audio_device_product.yml \
-  --probe send_test_tone \
-  --timeout 10
-```
-
-## Collect Artifacts
-
-Reports and captures live under:
-
-```text
-artifacts/
-  captures/
-  reports/
-```
-
-Collect them with Ansible:
+Install Python dependencies:
 
 ```yaml
-- name: Fetch artifacts
+- name: Install Python requirements
+  ansible.builtin.pip:
+    requirements: "{{ test_framework_root }}/requirements.txt"
+    virtualenv: "{{ test_framework_root }}/.venv"
+```
+
+Install external probe tools only on hosts that execute those probes:
+
+```yaml
+- name: Install probe packages
+  ansible.builtin.package:
+    name:
+      - gstreamer1.0-tools
+      - tshark
+    state: present
+```
+
+Browser packages are required only for UI tests. The Selenium wrapper creates
+the configured driver lazily.
+
+## Running remotely
+
+```yaml
+- name: Run black-box tests
+  ansible.builtin.command:
+    argv:
+      - "{{ test_framework_root }}/.venv/bin/pytest"
+      - "{{ test_framework_root }}/tests"
+      - "--operational-config"
+      - "{{ test_operational_config }}"
+  args:
+    chdir: "{{ test_framework_root }}"
+```
+
+Filter qualification runs as needed:
+
+```yaml
+- name: Run display requirement
+  ansible.builtin.command:
+    argv:
+      - "{{ test_framework_root }}/.venv/bin/pytest"
+      - "--operational-config"
+      - "{{ test_operational_config }}"
+      - "--product"
+      - "display"
+      - "--requirement"
+      - "REQ-101"
+```
+
+## Artifacts
+
+Create a writable artifact directory:
+
+```yaml
+- name: Create artifact directory
+  ansible.builtin.file:
+    path: "{{ test_framework_root }}/artifacts"
+    state: directory
+    mode: "0755"
+```
+
+Collect it after the test:
+
+```yaml
+- name: Fetch test artifacts
   ansible.builtin.fetch:
-    src: /opt/blackbox-testing/artifacts/
-    dest: ./artifacts/{{ inventory_hostname }}/
+    src: "{{ test_framework_root }}/artifacts/"
+    dest: "./collected-artifacts/"
     flat: false
 ```
 
-## Notes for Raspberry Pis
+## Deployment rules
 
-Raspberry Pis may need extra setup:
-
-- install OS packages for audio drivers
-- configure ALSA/PulseAudio/PipeWire depending on your image
-- ensure the test user can access audio devices
-- ensure the test user can run packet captures
-
-For tshark packet capture, you may need to configure dumpcap permissions or run the test process with elevated privileges.
-
-## Notes for WICs
-
-Treat WICs like constrained test nodes:
-
-- keep dependencies explicit
-- avoid assuming a browser is installed
-- use backend and probe tests when UI is unavailable
-- use Ansible host vars for interface/device differences
-- collect logs and captures aggressively because interactive debugging is harder
-
+- Operations and inventory determine names and addresses.
+- Python builders determine capabilities, pages, elements, probes, and ports.
+- Use operational overrides for site-specific UI protocols and ports.
+- Do not generate capability YAML.
+- Ensure each instance name is unique within its operational group because the
+  name is appended to UI test tags.

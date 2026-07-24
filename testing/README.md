@@ -1,681 +1,214 @@
-# UI Product Testing
+# Composable Product Testing
 
-This directory contains a small config-driven UI testing layer for Selenium.
+This package builds black-box test objects by composing API, UI, probe, and
+WebSocket capabilities. Python builders define what a product type can do.
+Operational YAML defines which deployed instances exist.
 
-Product configuration should live in `.yml` files. Python should load the YAML, build a `Product`, and then let tests interact with APIs, pages, elements, and probes by name.
+## Core model
 
-```python
-from config import load_product_config
-from products import ProductFactory
+- `Product` is a small container of already-built components.
+- `ProductBuilder` defines a reusable product type.
+- `PageBuilder` defines a page and its elements in Python.
+- `operational_config.yml` supplies instance names, addresses, and overrides.
+- `build_products_from_config` applies builders to all configured instances.
+- Low-level adapter factories live in `factory.py`.
 
+There is no product factory, page factory, system object, or display capability
+YAML.
 
-config = load_product_config("configs/display_product.yml")
-product = ProductFactory.create(driver, config)
-
-dashboard = product.page("dashboard").open()
-dashboard.click("acknowledge_alert")
-```
-
-`load_product_config()` uses PyYAML when it is installed. If PyYAML is not installed, it falls back to a small mapping-only YAML reader that supports the config style shown in this README.
-
-Install the testing dependencies from [requirements.txt](/Users/kayleekhang/kyle-june-26/test-framework/testing/requirements.txt:1).
-
-## Core Model
-
-```text
-Product
-  api
-    endpoints
-  pages optional
-    page
-      elements
-```
-
-- `Product` owns one API object and zero or more pages.
-- `API` owns named endpoints.
-- `Page` owns named UI elements for one route.
-- `UiElement` wraps a Selenium selector and exposes actions like `click()`, `text()`, and `is_visible()`.
-
-## Module Layout
-
-The implementation is split by responsibility:
+## Files
 
 ```text
 testing/
-  api.py              HTTP endpoint models and httpx client
-  config.py           YAML config loading
-  products.py         Product classes, product-specific behavior, ProductFactory
-  probes.py           GStreamer and tshark/Wireshark wrappers
-  reporting.py        JSON and HTML report builder
-  cli.py              command-line entry points
-  ui/
-    elements.py       Selenium element adapters
-    pages.py          Page objects and PageFactory
-```
-
-Preferred imports for new code:
-
-```python
-from config import load_product_config
-from products import ProductFactory
-```
-
-Add new product behavior in `products.py`.
-
-Add new page behavior in `ui/pages.py`.
-
-Add new element adapters in `ui/elements.py`.
-
-Add new external observation tools in `probes.py`.
-
-## Config Location
-
-Example:
-
-```text
-testing/
+  api.py
+  builders.py
+  factory.py
+  products.py
+  probes.py
+  websockets_client.py
   configs/
-    display_product.yml
+    operational_config.yml
+  ui/
+    elements.py
+    pages.py
+    selenium.py
+  tests/
 ```
 
-Each product should get its own YAML file:
+## Manual product construction
 
-```text
-configs/
-  display_product.yml
-  backend_product.yml
-  camera_product.yml
-  admin_console_product.yml
-```
-
-## Required YAML Shape
-
-```yaml
-product_type: display
-
-api:
-  endpoints: {}
-
-ui:
-  base_url: http://localhost:3000
-  selector_prefix: display
-  pages: {}
-```
-
-`ui` is optional. Backend-only products can omit it:
-
-```yaml
-product_type: backend
-
-api:
-  endpoints:
-    health:
-      method: GET
-      protocol: http
-      host: localhost
-      port: 8081
-      path: /health
-```
-
-## API Config
-
-Each endpoint needs `protocol`, `host`, `port`, and `path`. `method` defaults to `GET`, but it is better to be explicit.
-
-```yaml
-api:
-  endpoints:
-    health:
-      method: GET
-      protocol: http
-      host: localhost
-      port: 8080
-      path: /health
-
-    alerts:
-      method: GET
-      protocol: http
-      host: localhost
-      port: 8080
-      path: /api/alerts
-      query:
-        limit: "10"
-```
-
-Usage:
+Use a builder directly when a test needs a custom product definition:
 
 ```python
-health_url = product.api.endpoint("health").url
+from builders import PageBuilder, ProductBuilder
+
+builder = (
+    ProductBuilder("display")
+    .with_api_endpoint(
+        "health",
+        method="GET",
+        protocol="https",
+        port=8443,
+        path="/health",
+    )
+    .with_ui(
+        protocol="https",
+        port=8080,
+        selenium={
+            "browser": "chrome",
+            "options": {"headless": True},
+        },
+    )
+    .with_page(
+        PageBuilder("settings", "/settings")
+        .button("save", test_tag="save-settings")
+        .text("success", test_tag="settings-saved-message")
+    )
+    .with_websocket(
+        "events",
+        protocol="wss",
+        port=8080,
+        path="/events",
+    )
+)
+
+product = builder.build(name="p1", ip="10.0.0.1")
 ```
 
-Run one endpoint:
+The resulting addresses and selectors are resolved from the instance:
+
+```text
+API:       https://10.0.0.1:8443/health
+UI:        https://10.0.0.1:8080/settings
+WebSocket: wss://10.0.0.1:8080/events
+Selector:  [data-testid="save-settings_p1"]
+```
+
+## Reusable product definitions
+
+Standard definitions live in `products.py`:
+
+```python
+from products import display_product_builder
+
+builder = display_product_builder()
+product = builder.build(name="p2", ip="10.0.0.2")
+```
+
+`display_product_builder()` replaces the deleted `display_product.yml`. Add or
+remove display pages and elements in that function.
+
+## Operational configuration
+
+Operational YAML describes deployments, not UI capabilities:
+
+```yaml
+productTypeOne:
+  builder: display
+  instances:
+    - name: p1
+      ip: 10.0.0.1
+    - name: p2
+      ip: 10.0.0.2
+    - name: p3
+      ip: 10.0.0.3
+```
+
+Build all configured products:
+
+```python
+from builders import build_products_from_config
+from config import load_product_config
+from products import display_product_builder
+
+operations = load_product_config("configs/operational_config.yml")
+
+products = build_products_from_config(
+    operations,
+    builders={"display": display_product_builder()},
+)
+
+p2 = products["productTypeOne"][1]
+```
+
+The returned value is a mapping from operational group to a list of products in
+YAML order. Prefer finding a product by name when order may change:
+
+```python
+p2 = next(
+    product
+    for product in products["productTypeOne"]
+    if product.name == "p2"
+)
+```
+
+## Building several instances manually
+
+```python
+products = display_product_builder().build_many([
+    {"name": "p1", "ip": "10.0.0.1"},
+    {"name": "p2", "ip": "10.0.0.2"},
+    {"name": "p3", "ip": "10.0.0.3"},
+])
+```
+
+Each product receives independent API endpoints, pages, selector suffixes,
+WebSocket channels, and a lazily created Selenium driver.
+
+## Using composed components
 
 ```python
 response = product.api.request("health")
 
-assert response.ok
-assert response.status_code == 200
+settings = product.page("settings")
+settings.open()
+settings.click("save")
+
+events = product.websocket("events")
+reply = events.exchange({"command": "status"})
+
+capture = product.probe("audio_packets")
+result = capture.capture()
 ```
 
-Run multiple endpoints concurrently:
+## Selenium configuration
+
+Pass Selenium settings to `with_ui`:
 
 ```python
-responses = product.api.request_many(["health", "alerts"])
-
-assert responses["health"].ok
-assert responses["alerts"].ok
+.with_ui(
+    protocol="https",
+    port=8080,
+    selenium={
+        "browser": "chrome",
+        "options": {
+            "headless": True,
+            "arguments": ["--disable-dev-shm-usage"],
+            "page_load_strategy": "normal",
+        },
+        "timeouts": {
+            "implicit_wait_seconds": 0,
+            "page_load_seconds": 30,
+            "script_seconds": 30,
+        },
+        "window_size": {"width": 1440, "height": 900},
+    },
+)
 ```
 
-The API client uses `httpx`. `request()` uses `httpx.Client`; `request_many()` uses `httpx.AsyncClient` internally for concurrent calls.
+The browser starts lazily on the first WebDriver operation.
 
-If you are already inside an async test, call the async API directly:
-
-```python
-responses = await product.api.request_many_async(["health", "alerts"])
-
-assert responses["health"].ok
-assert responses["alerts"].ok
-```
-
-## UI Config
-
-Each product has a `base_url`, a `selector_prefix`, and one or more pages.
-
-```yaml
-ui:
-  base_url: http://localhost:3000
-  selector_prefix: display
-
-  pages:
-    dashboard:
-      route: /
-      page_type: dashboard
-      elements: {}
-```
-
-`selector_prefix` is combined with each element's `test_tag`.
-
-This YAML:
-
-```yaml
-ui:
-  selector_prefix: display
-  pages:
-    settings:
-      elements:
-        save:
-          type: button
-          test_tag: save-settings
-```
-
-Creates this Selenium CSS selector:
-
-```css
-[data-testid="display-save-settings"]
-```
-
-So the UI should have:
-
-```html
-<button data-testid="display-save-settings">Save</button>
-```
-
-## Element Config
-
-Each element needs a stable name and a `test_tag`.
-
-Preferred:
-
-```yaml
-save:
-  type: button
-  test_tag: save-settings
-```
-
-If your project always uses `data-testid`, you do not need multiple selector strategies. Keep `test_tag` as the standard and avoid `selector` unless you are forced to test existing UI that cannot expose test IDs.
-
-Direct selector fallback:
-
-```yaml
-save:
-  type: button
-  selector: "#save-settings"
-```
-
-Supported fields:
-
-```yaml
-save:
-  type: button
-  test_tag: save-settings
-  selector: "#save-settings"
-  by: css selector
-  timeout_seconds: 10
-```
-
-Element types currently supported:
-
-- `button`
-- `popup`
-- `text`
-
-Unknown types fall back to the base `UiElement`.
-
-You still need multiple named elements even if every element uses `test_tag`.
-
-This is because element names express test intent:
-
-```yaml
-save:
-  type: button
-  test_tag: save-settings
-
-cancel:
-  type: button
-  test_tag: cancel-settings
-```
-
-Both use the same selector strategy, but they represent different UI actions.
-
-## Adding a UI Element
-
-Add the element under the page's `elements`.
-
-Before:
-
-```yaml
-settings:
-  route: /settings
-  page_type: settings
-  elements:
-    save:
-      type: button
-      test_tag: save-settings
-```
-
-After adding a cancel button:
-
-```yaml
-settings:
-  route: /settings
-  page_type: settings
-  elements:
-    save:
-      type: button
-      test_tag: save-settings
-
-    cancel:
-      type: button
-      test_tag: cancel-settings
-```
-
-Then use it in a test:
-
-```python
-settings = product.page("settings").open()
-settings.click("cancel")
-```
-
-If the page has a custom page class, add a named method:
-
-```python
-class SettingsPage(Page):
-    def save(self):
-        self.click("save")
-
-    def cancel(self):
-        self.click("cancel")
-```
-
-Then the test becomes:
-
-```python
-settings.cancel()
-```
-
-## Removing a UI Element
-
-Remove it from the YAML:
-
-```yaml
-cancel:
-  type: button
-  test_tag: cancel-settings
-```
-
-Then remove or update any tests that call:
-
-```python
-settings.click("cancel")
-settings.element("cancel")
-settings.cancel()
-```
-
-If the custom page class has a method that only exists for that element, remove that method too.
-
-## Adding a Page
-
-Add a new page under `ui.pages`.
-
-```yaml
-ui:
-  pages:
-    alerts:
-      route: /alerts
-      page_type: base
-      elements:
-        refresh:
-          type: button
-          test_tag: refresh-alerts
-
-        empty_state:
-          type: text
-          test_tag: alerts-empty-state
-```
-
-Then use it:
-
-```python
-alerts = product.page("alerts").open()
-alerts.click("refresh")
-assert alerts.is_visible("empty_state")
-```
-
-If the page needs behavior beyond generic `click`, `text`, or `is_visible`, create a custom page class:
-
-```python
-class AlertsPage(Page):
-    def refresh(self):
-        self.click("refresh")
-
-    def has_empty_state(self) -> bool:
-        return self.is_visible("empty_state")
-```
-
-Register it:
-
-```python
-class PageFactory:
-    PAGE_TYPES = {
-        "dashboard": DashboardPage,
-        "settings": SettingsPage,
-        "alerts": AlertsPage,
-    }
-```
-
-Then set the YAML:
-
-```yaml
-page_type: alerts
-```
-
-## Removing a Page
-
-Remove the page from `ui.pages`.
-
-Then remove or update tests that call:
-
-```python
-product.page("alerts")
-```
-
-If the page had a custom page class and no other YAML config uses it, remove the class and its registry entry from `PageFactory.PAGE_TYPES`.
-
-## Full YAML Example
-
-See [configs/display_product.yml](/Users/kayleekhang/kyle-june-26/test-framework/testing/configs/display_product.yml:1).
-
-```yaml
-product_type: display
-
-api:
-  endpoints:
-    health:
-      protocol: http
-      host: localhost
-      port: 8080
-      path: /health
-
-ui:
-  base_url: http://localhost:3000
-  selector_prefix: display
-
-  pages:
-    settings:
-      route: /settings
-      page_type: settings
-      elements:
-        save:
-          type: button
-          test_tag: save-settings
-```
-
-## Orchestration Flow
-
-A normal Selenium test run should follow this flow:
-
-```text
-1. Start or connect to the application under test.
-2. Create a Selenium WebDriver.
-3. Load the product .yml file.
-4. Build the Product with ProductFactory.
-5. Open pages and interact with elements.
-6. Assert UI state.
-7. Quit the WebDriver.
-```
-
-Example:
-
-```python
-from pathlib import Path
-
-from selenium import webdriver
-
-from config import load_product_config
-from products import ProductFactory
-
-
-def test_settings_save():
-    driver = webdriver.Chrome()
-    config = load_product_config(Path("configs/display_product.yml"))
-    product = ProductFactory.create(driver, config)
-
-    settings = product.page("settings").open()
-    settings.save()
-
-    assert settings.text("success_message") == "Saved"
-
-    driver.quit()
-```
-
-With pytest fixtures:
-
-```python
-from pathlib import Path
-
-import pytest
-from selenium import webdriver
-
-from config import load_product_config
-from products import ProductFactory
-
-
-@pytest.fixture
-def driver():
-    driver = webdriver.Chrome()
-    yield driver
-    driver.quit()
-
-
-@pytest.fixture
-def product(driver):
-    config = load_product_config(Path("configs/display_product.yml"))
-    return ProductFactory.create(driver, config)
-
-
-def test_dashboard_alert(product):
-    dashboard = product.page("dashboard").open()
-
-    assert dashboard.alert_is_visible()
-
-    dashboard.acknowledge_alert()
-```
-
-## Running Different Combinations
-
-Backend-only product:
-
-```python
-from config import load_product_config
-from products import ProductFactory
-
-
-def test_backend_health():
-    config = load_product_config("configs/backend_product.yml")
-    product = ProductFactory.create(driver=None, config=config)
-
-    response = product.api.request("health")
-
-    assert not product.has_ui
-    assert response.ok
-```
-
-Concurrent backend endpoints:
-
-```python
-def test_backend_endpoints():
-    config = load_product_config("configs/backend_product.yml")
-    product = ProductFactory.create(driver=None, config=config)
-
-    responses = product.api.request_many(["health", "status"])
-
-    assert responses["health"].ok
-    assert responses["status"].ok
-```
-
-UI product:
-
-```python
-from selenium import webdriver
-
-
-def test_display_settings():
-    driver = webdriver.Chrome()
-    config = load_product_config("configs/display_product.yml")
-    product = ProductFactory.create(driver=driver, config=config)
-
-    settings = product.page("settings").open()
-    settings.save()
-
-    driver.quit()
-```
-
-Audio/probe product:
-
-```python
-def test_audio_capture():
-    config = load_product_config("configs/audio_device_product.yml")
-    product = ProductFactory.create(driver=None, config=config)
-
-    capture = product.capture_audio_packets(timeout_seconds=5)
-
-    assert capture.ok
-```
-
-Report-producing pytest test:
-
-```python
-from reporting import TestReport
-
-
-def test_backend_health_report():
-    config = load_product_config("configs/backend_product.yml")
-    product = ProductFactory.create(driver=None, config=config)
-    report = TestReport("backend health")
-
-    response = product.api.request("health")
-    report.add_step(
-        "health endpoint",
-        "passed" if response.ok else "failed",
-        details={"status_code": response.status_code, "error": response.error},
-    )
-    report.write("backend-health")
-
-    assert response.ok
-```
-
-CLI probes:
+## Running tests
 
 ```bash
-python cli.py gst-probe --config configs/audio_device_product.yml --probe send_test_tone --timeout 10
+pytest
+pytest --product display
+pytest --requirement REQ-101
+pytest --capability CAP-AUDIO-TRANSPORT
+pytest --operational-config configs/operational_config.yml
 ```
 
-```bash
-python cli.py tshark-probe --config configs/audio_device_product.yml --probe audio_packets --timeout 10
-```
+## Design rule
 
-CLI report demo:
-
-```bash
-python cli.py report-demo --output-dir artifacts/reports
-```
-
-## When to Use YAML vs Python
-
-Put this in YAML:
-
-- Page names
-- Routes
-- Element names
-- Element selectors
-- API endpoint addresses
-- Timeouts
-
-Put this in Python page classes:
-
-- Multi-step workflows
-- Reusable user actions
-- Assertions with meaning
-- UI behavior that combines several elements
-
-Good test:
-
-```python
-dashboard.acknowledge_alert()
-```
-
-Good fallback:
-
-```python
-dashboard.click("acknowledge_alert")
-```
-
-Avoid spreading raw selectors through tests:
-
-```python
-driver.find_element(By.CSS_SELECTOR, '[data-testid="display-acknowledge-alert"]').click()
-```
-
-Selectors should mostly live in YAML so UI changes are localized.
-
-## Scaling Rule
-
-Start every page as YAML-only.
-
-Add a custom page class only when one of these happens:
-
-- Tests repeat the same sequence of clicks/assertions.
-- A workflow has a name in the product domain.
-- The page has popups, confirmation flows, or conditional UI.
-- Generic `page.click("name")` starts making tests hard to read.
-
-This keeps small products small while still allowing complex products to grow page by page.
-
-## More Architecture Notes
-
-For the reasoning behind this design, sources, tradeoffs, operational config guidance, and API concurrency discussion, see [DESIGN_RATIONALE.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/DESIGN_RATIONALE.md:1).
-
-For VM-based black-box testing with GStreamer, tshark/Wireshark, probe configs, CLI commands, and HTML/JSON reports, see [BLACK_BOX_PROBES.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/BLACK_BOX_PROBES.md:1).
-
-For deploying this framework onto test VMs, Raspberry Pis, or WIC-like hardware with Ansible, see [ANSIBLE_DEPLOYMENT.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/ANSIBLE_DEPLOYMENT.md:1).
-
-For organizing pytest suites by product requirements and cross-product capabilities, see [PYTEST_REQUIREMENTS.md](/Users/kayleekhang/kyle-june-26/test-framework/testing/PYTEST_REQUIREMENTS.md:1).
+Put reusable test capability definitions in Python builders. Put names,
+addresses, and deployment-specific overrides in operational YAML.

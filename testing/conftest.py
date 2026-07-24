@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from builders import build_products_from_config
 from config import load_product_config
-from products import ProductFactory
+from products import (
+    audio_device_product_builder,
+    backend_product_builder,
+    display_product_builder,
+)
 from pytest_metadata import marker_values
-
-
-DEFAULT_PRODUCT_CONFIGS = {
-    "audio_device": "configs/audio_device_product.yml",
-    "backend": "configs/backend_product.yml",
-    "display": "configs/display_product.yml",
-}
 
 
 def pytest_addoption(parser):
@@ -36,15 +32,9 @@ def pytest_addoption(parser):
         help="Run tests tied to this product name. Can be used multiple times.",
     )
     parser.addoption(
-        "--config-root",
-        default=".",
-        help="Directory used to resolve product config paths.",
-    )
-    parser.addoption(
-        "--product-config",
-        action="append",
-        default=[],
-        help="Override a product config path as name=path. Can be used multiple times.",
+        "--operational-config",
+        default="configs/operational_config.yml",
+        help="Operational YAML describing product groups and instances.",
     )
 
 
@@ -81,30 +71,35 @@ def pytest_collection_modifyitems(config, items):
         items[:] = selected
 
 
-@pytest.fixture(scope="session")
-def product_configs(pytestconfig) -> dict[str, Path]:
-    config_root = Path(pytestconfig.getoption("--config-root"))
-    product_configs = {
-        name: config_root / path
-        for name, path in DEFAULT_PRODUCT_CONFIGS.items()
+@pytest.fixture
+def product_loader():
+    builders = {
+        "audio_device": audio_device_product_builder,
+        "backend": backend_product_builder,
+        "display": display_product_builder,
     }
 
-    for override in pytestconfig.getoption("--product-config"):
-        name, separator, path = override.partition("=")
-        if not separator:
-            raise ValueError(f"--product-config must be name=path, got: {override}")
-        product_configs[name] = config_root / path
-
-    return product_configs
-
-
-@pytest.fixture
-def product_loader(product_configs):
-    def load_product(name: str, driver=None):
-        config = load_product_config(product_configs[name])
-        return ProductFactory.create(driver=driver, config=config)
+    def load_product(name: str, driver=None, instance_name: str = "p1", ip: str = "localhost"):
+        return builders[name]().build(
+            name=instance_name,
+            ip=ip,
+            driver=driver,
+        )
 
     return load_product
+
+
+@pytest.fixture(scope="session")
+def configured_products(pytestconfig):
+    operations = load_product_config(pytestconfig.getoption("--operational-config"))
+    return build_products_from_config(
+        operations,
+        builders={
+            "audio_device": audio_device_product_builder(),
+            "backend": backend_product_builder(),
+            "display": display_product_builder(),
+        },
+    )
 
 
 @pytest.fixture

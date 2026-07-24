@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from config import load_product_config
-from products import ProductFactory
+from products import audio_device_product_builder, backend_product_builder
 from probes import GStreamerProbe, WiresharkProbe
 from reporting import TestReport
 
@@ -85,7 +85,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _load_product(config_path: str):
     config = load_product_config(Path(config_path))
-    return ProductFactory.create(driver=None, config=config)
+    builders = {
+        "audio_device": audio_device_product_builder,
+        "backend": backend_product_builder,
+    }
+    product_type = config["product_type"]
+    return builders[product_type]().build(name=product_type, ip="localhost")
 
 
 def _print_result(result) -> int:
